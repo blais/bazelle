@@ -37,14 +37,13 @@ is within a bazel workspace. Returns the workspace root or nil."
       (if (file-exists-p stderr-file)
 	  (delete-file stderr-file)))))
 
-;; (let ((default-directory "/home/blais/p/oblique/oblique"))
-;;   (bazelle-call-process-output "query" "parser_main.ccc"))
-
 (defun bazelle-target-for-filename (filename)
   "Get the target which includes the given filename."
   (let* ((default-directory (file-name-directory filename))
+         ;; Resolve label for file with bazel query.
          (fullname (bazelle-call-process
                     "query" (file-name-nondirectory filename))))
+    ;; Produce target the file-label is in using bazel query.
     (bazelle-call-process "query"
                           (format "attr('srcs', %s, %s:*)"
                                   fullname
@@ -60,6 +59,8 @@ is within a bazel workspace. Returns the workspace root or nil."
                       bazelle-command command target)))
         (call-interactively 'compile))))
 
+;; TODO(blais): Add compilation-read with completion to this (there may be more
+;; than one matching target, use the set of targets in the file's package).
 (defun bazelle-build ()
   "Build the target for the current buffer."
   (interactive)
@@ -70,11 +71,14 @@ is within a bazel workspace. Returns the workspace root or nil."
   (interactive)
   (bazelle-command-on-current "test"))
 
+(defun bazelle-test-at-point ()
+  "Run tests on only the test around the cursor."
+  (interactive)
+  (bazelle-command-on-current "test"))
+
 (defun bazelle-run ()
   "Run tests on the target for the current buffer."
   (interactive)
   (bazelle-command-on-current "run"))
-
-;; TODO: Run only test around cursor.
 
 (provide 'bazelle)
