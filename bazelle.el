@@ -80,7 +80,8 @@ is within a bazel workspace. Returns the workspace root or nil."
               (format "cd %s && %s %s %s"
                       (or (bazelle-is-workspace) (error "Could not find workspace."))
                       bazelle-command command (bazelle-read-target))))
-        (call-interactively 'compile))))
+        (add-to-list 'compile-history compile-command)
+        (compile compile-command))))
 
 (defun bazelle-build ()
   "Build the target for the current buffer."
