@@ -68,9 +68,18 @@ is within a bazel workspace. Returns the workspace root or nil."
 (defun bazelle-read-target (&optional filename)
   "Read a target name for the given or current file or dired directory name."
   (let* ((targets (bazelle-build-target-for-directory-or-filename
-                   (or filename
-                       (buffer-file-name)
-                       (and dired-directory (directory-file-name dired-directory))))))
+                   (or
+                    ;; A given filename.
+                    filename
+                    ;; The buffer filename.
+                    (buffer-file-name)
+                    ;; Open on a BUILD file.
+                    (let* ((file-name (buffer-file-name)))
+                      (when (and file-name
+                                 (string= (file-name-nondirectory file-name) "BUILD"))
+                        (directory-file-name (file-name-directory file-name))))
+                    ;; Open on a dired directory.
+                    (and dired-directory (directory-file-name dired-directory))))))
     (completing-read "Target: " targets nil nil (car targets))))
 
 (defun bazelle-command-on-current (command)
@@ -96,6 +105,7 @@ is within a bazel workspace. Returns the workspace root or nil."
 (defun bazelle-test-at-point ()
   "Run tests on only the test around the cursor."
   (interactive)
+  ;; TODO(blais): Implement test selection.
   (bazelle-command-on-current "test"))
 
 (defun bazelle-run ()
