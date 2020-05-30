@@ -15,7 +15,9 @@
 (defun bazelle-is-workspace (&optional dirname)
   "Predicate for whether the given (or current buffer) dirname
 is within a bazel workspace. Returns the workspace root or nil."
-  (let* ((startdir (or dirname (buffer-file-name)))
+  (let* ((startdir (or dirname
+                       (buffer-file-name)
+                       (and dired-directory (directory-file-name dired-directory))))
          (rootdir (or (locate-dominating-file startdir "WORKSPACE")
                       (locate-dominating-file startdir "WORKSPACE.bazel"))))
     (when rootdir
@@ -23,6 +25,8 @@ is within a bazel workspace. Returns the workspace root or nil."
 
 (defun bazelle-call-process (&rest args)
   "Run a bazel subcommand. Return stdout as string."
+  ;; Note: The current working directory of the subprocess is set to the current
+  ;; buffer's value of default-directory.
   (let ((stderr-file (make-temp-file "bazelle-stderr")))
     (unwind-protect
         (string-rstrip
@@ -37,30 +41,47 @@ is within a bazel workspace. Returns the workspace root or nil."
       (if (file-exists-p stderr-file)
 	  (delete-file stderr-file)))))
 
-(defun bazelle-target-for-filename (filename)
-  "Get the target which includes the given filename."
+(defun bazelle-build-target-for-file (filename)
+  "Get the list of targets which includes the given filename."
   (let* ((default-directory (file-name-directory filename))
          ;; Resolve label for file with bazel query.
          (fullname (bazelle-call-process
                     "query" (file-name-nondirectory filename))))
     ;; Produce target the file-label is in using bazel query.
-    (bazelle-call-process "query"
-                          (format "attr('srcs', %s, %s:*)"
-                                  fullname
-                                  (car (split-string fullname ":"))))))
+    (let ((cmd (format "attr('srcs', %s, %s:*)" fullname
+                       (car (split-string fullname ":")))))
+      (split-string (bazelle-call-process "query" cmd)))))
+
+(defun bazelle-build-target-for-directory (dirname)
+  "Get the list of targets under the given directory name."
+  (let* ((default-directory dirname)
+         (results (split-string (bazelle-call-process "query" "kind('.*rule', ':*')")))
+         (package (car (split-string (car results) ":"))))
+    (append (list (concat package ":all")) results)))
+
+(defun bazelle-build-target-for-directory-or-filename (file-or-dir)
+  "Get the list of targets under the given file or directory name."
+  (if (file-directory-p file-or-dir)
+      (bazelle-build-target-for-directory file-or-dir)
+    (bazelle-build-target-for-file file-or-dir)))
+
+(defun bazelle-read-target (&optional filename)
+  "Read a target name for the given or current file or dired directory name."
+  (let* ((targets (bazelle-build-target-for-directory-or-filename
+                   (or filename
+                       (buffer-file-name)
+                       (and dired-directory (directory-file-name dired-directory))))))
+    (completing-read "Target: " targets nil nil (car targets))))
 
 (defun bazelle-command-on-current (command)
   "Launch an interactive compilation on the target of the current buffer."
   (condition-case err
-      (let* ((target (bazelle-target-for-filename (buffer-file-name)))
-             (compile-command
+      (let* ((compile-command
               (format "cd %s && %s %s %s"
-                      (bazelle-is-workspace)
-                      bazelle-command command target)))
+                      (or (bazelle-is-workspace) (error "Could not find workspace."))
+                      bazelle-command command (bazelle-read-target))))
         (call-interactively 'compile))))
 
-;; TODO(blais): Add compilation-read with completion to this (there may be more
-;; than one matching target, use the set of targets in the file's package).
 (defun bazelle-build ()
   "Build the target for the current buffer."
   (interactive)
